@@ -111,22 +111,22 @@ bool loadProfil3() {
 //---------Functions---------
 void mainScreen() {
   runMenu=false;
-  tft.setTextColor(ST7735_GREEN,ST7735_BLACK);
+  tft.setTextColor(WHITE);
   tft.setCursor(0, 0); 
   tft.print("Profil: ");
   tft.println(activeProfil);
+  tft.setTextColor(GREEN);
   tft.setCursor(0, 20); 
-  tft.print("fSta: ");
-  tft.println(futesStart);
+  tft.println("TEMP: 84");
   tft.setCursor(0, 40); 
-  tft.print("fSto: ");
-  tft.println(futesStop);
+  tft.print("Set temp: ");
+  tft.println(temperature);
   tft.setCursor(0, 60); 
-  tft.print("tSto: ");
-  tft.println(tartasStart);
+  tft.println("Muvelet: Futes");
   tft.setCursor(0, 80); 
-  tft.print("tSto: ");
-  tft.println(tartasStop);
+  tft.print("Run: ");
+  tft.print(millis()/1000);
+  tft.println("s");
 }
 
 bool saveProfil1() {
@@ -297,6 +297,8 @@ void loop() {
   } else {
     if (screenCleared == 0) {
       tft.fillScreen(BLACK); 
+      tft.drawLine(0, 17, 160, 17, RED);
+      tft.drawLine(0, 18, 160, 18, RED);
       screenCleared = 1;
     }
     mainScreen();
