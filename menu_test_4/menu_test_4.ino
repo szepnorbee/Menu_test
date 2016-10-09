@@ -2,6 +2,7 @@
 #include <EEPROMex.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
+#include <Wire.h>
 #include <menu.h>//menu macros and objects
 #include <genericKeyboard.h>
 #include <menuFields.h>
@@ -19,10 +20,32 @@
 #define tftCS 10
 #define dc    8
 #define rst   7
+//-------PINs--------
+// 2-5 Kimenetek
+const int motorPin = 5;
+const int ledPin = 9;
+const int inputPin = A1;
+boolean ledState = HIGH;
+boolean motorState = HIGH;   // unsigned int volt
+boolean inputState = HIGH;
+
 //-------VARS--------
+unsigned long OnTime = 0;
+unsigned long OffTime = 0;
+unsigned long previousMillis = 0;
+unsigned long prevMenuMillis = 0;
+bool reqHeat = true;
+const long egyezer = 1000;       //másodperc
+const long hatvanezer = 60000;   //perc
+int secCounter = 0;
+
 int old_button;
 bool runMenu=false;
 bool screenCleared = 0;
+
+float tempC = 0.0;
+float lasttempC = 5;
+boolean thermostat = true;
 
 byte futesStart = 2;
 byte futesStop = 60;
@@ -57,10 +80,13 @@ byte addrtStop3 = 180;
 byte addrTemp3 = 190;
 byte addrHis3 = 200;
 
-//-------------------
-
+//-------DISPLAY------------
 Adafruit_ST7735 tft(tftCS, dc, rst);
 menuGFX gfx(tft);
+//-------TEMP SENSOR--------
+#define ONE_WIRE_BUS 6
+OneWire oneWire(ONE_WIRE_BUS);
+DallasTemperature sensors(&oneWire);
 
 /* Colors: BLACK, WHITE, RED, YELLOW, CYAN, MAGENTA, BRIGHT_RED, LIGHT_GREY, 
 DARK_GREY */
@@ -117,12 +143,12 @@ void mainScreen() {
   tft.println(activeProfil);
   tft.setTextColor(GREEN);
   tft.setCursor(0, 20); 
-  tft.println("TEMP: 84");
+  tft.print("TEMP: ");tft.print(tempC);tft.println(" C");
   tft.setCursor(0, 40); 
   tft.print("Set temp: ");
   tft.println(temperature);
   tft.setCursor(0, 60); 
-  tft.println("Muvelet: Futes");
+  tft.println("Thermostat: ");tft.println(thermostat);
   tft.setCursor(0, 80); 
   tft.print("Run: ");
   tft.print(millis()/1000);
@@ -165,6 +191,17 @@ bool saveProfil3() {
   return true;
   }
 
+void updVar() {
+
+  if (reqHeat == true) { 
+    OnTime = futesStart * egyezer;
+    OffTime = futesStop * egyezer;    
+  } else {
+    OnTime = tartasStart * egyezer;
+    OffTime = tartasStop * hatvanezer;   //ez percben van
+  }
+}
+
 //---------MENU TREE---------
 
 CHOOSE(temperature,temp,"Temp",
@@ -180,6 +217,12 @@ CHOOSE(histeresis,hister,"Toler.",
     VALUE("4",4,nothing),
     VALUE("6",6,nothing)
 );   
+
+CHOOSE(menuTimeout,mtimer,"Menu Timer",
+    VALUE("60",60,nothing),
+    VALUE("30",30,nothing),
+    VALUE("15",15,nothing)
+);  
 
 MENU(timerMenu,"Idozites",
     FIELD(futesStart,"fStart","s",1,20,1,1,nothing),
@@ -202,7 +245,7 @@ MENU(saveProfil,"Mentes",
 
 MENU(options,"Beallitasok",
     SUBMENU(loadProfil),
-    OP("MenuTimer",nothing),
+    SUBMENU(mtimer),
     OP("Frissit seb",nothing),
     SUBMENU(saveProfil),
     OP("Firmware",nothing)
@@ -230,6 +273,7 @@ int readKeyboard() {
       button2 = getButton();
 
       if (button == button2) {
+         secCounter = 0;
          old_button = button;
          pressed_button = button;
          if(button != 0) {
@@ -267,6 +311,9 @@ int getButton() {
 
 void setup() {
   Serial.begin(9600);
+  pinMode(motorPin, OUTPUT);
+  pinMode(ledPin, OUTPUT);
+  pinMode(inputPin, INPUT);
   SPI.begin();
   tft.initR(INITR_BLACKTAB);
   tft.setRotation(1);
@@ -302,6 +349,44 @@ void loop() {
       screenCleared = 1;
     }
     mainScreen();
+    secCounter = 0;
   }
-  
+//--------------- CSIGA VEZÉRLÉS ------------
+  updVar();
+  unsigned long currentMillis = millis();
+
+  if ((motorState == LOW) && (currentMillis - previousMillis >= OnTime))
+      {
+      motorState = HIGH;  // Turn it off
+      previousMillis = currentMillis;
+      digitalWrite(motorPin, motorState);
+      digitalWrite(ledPin, motorState);
+      }
+  else if ((motorState == HIGH) && (currentMillis - previousMillis >= OffTime))
+      {
+      motorState = LOW;  // turn it on
+      previousMillis = currentMillis;
+      digitalWrite(motorPin, motorState);
+      digitalWrite(ledPin, motorState);
+      }
+//---------------MENU TIMER-----------------------
+unsigned long currMenuMillis = millis();
+if (currMenuMillis - prevMenuMillis >= 1000) {
+  if (runMenu) {
+    secCounter++;
+  }
+  prevMenuMillis = currMenuMillis;
+}
+if (secCounter >= menuTimeout) {
+  runMenu = false;
+  secCounter = 0;
+  tft.fillScreen(BLACK); 
+}
+//--------------INFINITE LOOP---------------------
+sensors.setWaitForConversion(false);                                         // makes it async
+sensors.requestTemperatures();  
+  if (sensors.getTempCByIndex(0) > -100) {
+    lasttempC = tempC;
+    tempC = sensors.getTempCByIndex(0);
+    }
 }
