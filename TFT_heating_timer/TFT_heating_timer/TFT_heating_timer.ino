@@ -23,6 +23,7 @@
 //-------PINs--------
 // 2-5 Kimenetek
 const int motorPin = 5;
+const int fanPin = 4;
 const int ledPin = 9;
 const int inputPin = A1;
 boolean ledState = HIGH;
@@ -38,6 +39,9 @@ bool reqHeat = true;
 const long egyezer = 1000;       //másodperc
 const long hatvanezer = 60000;   //perc
 int secCounter = 0;
+int lastMin = 1;
+boolean updMain = true;
+boolean updTime = true;
 
 int old_button;
 bool runMenu=false;
@@ -96,6 +100,8 @@ bool nothing() {}
 
 bool pauseMenu() {
   runMenu=false;
+  updMain=true;
+  updTime=true;
   screenCleared = 0;
   return true;
   }
@@ -141,9 +147,17 @@ void displayUptime() {
   h = s / 3600;
   s = s - m * 60;
   m = m - h * 60;
-  tft.print(h);
-  printDigits(m);
-  tft.println();
+  if (m!=lastMin || updTime==true) {
+    lastMin=m;
+    tft.setTextColor(MAGENTA);
+    tft.fillRect(0,80,128,20,BLACK);
+    tft.setCursor(0, 80); 
+    tft.print("Run: ");
+    tft.print(h);
+    printDigits(m);
+    tft.println();    
+    updTime=false;
+  }
 }
 
 void printDigits(int digits) {
@@ -154,6 +168,13 @@ void printDigits(int digits) {
 }
 //---------Functions---------
 void mainScreen() {
+ if (reqHeat==true) {
+  tft.fillCircle(150,8,5,RED);
+ } else if (reqHeat==false) {
+  tft.fillCircle(150,8,5,GREEN);
+ }
+ if (updMain==true) {
+  updMain=false;
   runMenu=false;
   tft.setTextColor(WHITE);
   tft.setCursor(0, 0); 
@@ -169,11 +190,11 @@ void mainScreen() {
   tft.print("Thermostat:");
   if (thermostat==1) {
     tft.println("BE");
-  } else if (thermostat==0) {
+   } else if (thermostat==0) {
     tft.println("KI");
+   }
   }
-  tft.setCursor(0, 80); 
-  tft.print("Run: ");displayUptime();
+  displayUptime(); 
 }
 
 bool saveProfil1() {
@@ -221,6 +242,33 @@ void updVar() {
     OnTime = tartasStart * egyezer;
     OffTime = tartasStop * hatvanezer;   //ez percben van
   }
+}
+
+//-----------------------ÜZEMMÓD VÁLTÁS--------------------------
+void readInput() {
+ if (thermostat == false) {         // Bemenet vezérelt üzemmód
+  
+    if (digitalRead(inputPin) == LOW) {       // Ha alacsony akkor fűtűnk
+    delay(400);
+    if (digitalRead(inputPin) == LOW) {
+      reqHeat = true;
+      digitalWrite(fanPin, LOW);         // Ventillátor bekapcsolása
+    } else {
+      reqHeat = false;
+      digitalWrite(fanPin, HIGH);        // Ventillátor kikapcsolása
+    }
+  }
+ } else if (thermostat == true) {   // Thermostat vezérelt üzemmód
+  //valami
+   if (tempC < temperature - histeresis && digitalRead(inputPin) == LOW) {
+      reqHeat = true;
+      digitalWrite(fanPin, LOW);         // Ventillátor bekapcsolása
+    } 
+   if (tempC >= temperature || digitalRead(inputPin) == HIGH) {
+      reqHeat = false;
+      digitalWrite(fanPin, HIGH);         // Ventillátor kikapcsolása 
+   }
+ }  
 }
 
 //---------MENU TREE---------
@@ -360,6 +408,8 @@ void setup() {
 }
 
 void loop() {
+  readInput();
+  updVar();
   if (runMenu) { 
     mainMenu.poll(gfx,mykb);
   }  else if (readKeyboard()==menu::enterCode) {
@@ -378,7 +428,6 @@ void loop() {
     secCounter = 0;
   }
 //--------------- CSIGA VEZÉRLÉS ------------
-  updVar();
   unsigned long currentMillis = millis();
 
   if ((motorState == LOW) && (currentMillis - previousMillis >= OnTime))
