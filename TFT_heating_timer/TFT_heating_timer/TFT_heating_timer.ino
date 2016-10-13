@@ -20,6 +20,8 @@
 #define tftCS 10
 #define dc    8
 #define rst   7
+//-------TEMP SENSOR-
+#define ONE_WIRE_BUS A0
 //-------PINs--------
 // 2-5 Kimenetek
 const int motorPin = 5;
@@ -42,6 +44,7 @@ int secCounter = 0;
 int lastMin = 1;
 boolean updMain = true;
 boolean updTime = true;
+boolean redrawTemp = true;
 
 int old_button;
 bool runMenu=false;
@@ -60,6 +63,12 @@ byte histeresis = 2;
 
 byte menuTimeout = 60;
 byte activeProfil = 1;
+//-------CHART VARS-----------------
+int newVal = 0;
+int tempChart[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
+int chartInterval = 600; // 10 perc
+int chartTimer = 0;
+
 //-------EEPROM Adresses------------
 byte addrfStart1 = 10;
 byte addrfStop1 = 20;
@@ -88,7 +97,6 @@ byte addrHis3 = 200;
 Adafruit_ST7735 tft(tftCS, dc, rst);
 menuGFX gfx(tft);
 //-------TEMP SENSOR--------
-#define ONE_WIRE_BUS 6
 OneWire oneWire(ONE_WIRE_BUS);
 DallasTemperature sensors(&oneWire);
 
@@ -102,6 +110,7 @@ bool pauseMenu() {
   runMenu=false;
   updMain=true;
   updTime=true;
+  redrawTemp = true;
   screenCleared = 0;
   return true;
   }
@@ -138,6 +147,33 @@ bool loadProfil3() {
  temperature = EEPROM.read(addrTemp3);
  histeresis = EEPROM.read(addrHis3);
  return true;
+}
+//-------------DISPLAY CHART-----------
+bool chart() {
+  tft.fillScreen(BLACK); 
+  tft.drawLine(5, 120, 5, 20, WHITE);
+  tft.drawLine(5, 120, 155, 120, WHITE);
+
+  tft.drawLine(0, 100, 4, 100, WHITE);
+  tft.drawLine(0, 80, 4, 80, WHITE);
+  tft.drawLine(0, 60, 4, 60, WHITE);
+  tft.drawLine(0, 40, 4, 40, WHITE);
+
+  tft.drawLine(25, 121, 25, 125, WHITE);  
+  tft.drawLine(45, 121, 45, 125, WHITE);
+  tft.drawLine(65, 121, 65, 125, WHITE);  
+  tft.drawLine(85, 121, 85, 125, WHITE);
+  tft.drawLine(105, 121, 105, 125, WHITE);  
+  tft.drawLine(125, 121, 125, 125, WHITE);
+  tft.drawLine(145, 121, 145, 125, WHITE);
+
+  tft.fillRect(6, 1, 155, 118, BLACK);
+  tft.drawLine(6, temperature, 155, temperature, BLUE);  // Setpoint
+  for(int x=1;x<12;x++) {
+  tft.drawLine(x*10, tempChart[x-1], (x+1)*10, tempChart[x], GREEN);
+  delay(1000);
+  return true;
+ }
 }
 //-------------- UPTIME-----------
 void displayUptime() {
@@ -181,8 +217,6 @@ void mainScreen() {
   tft.print("Profil: ");
   tft.println(activeProfil);
   tft.setTextColor(GREEN);
-  tft.setCursor(0, 20); 
-  tft.print("TEMP: ");tft.print(tempC);tft.println(" C");
   tft.setCursor(0, 40); 
   tft.print("Set temp: ");
   tft.println(temperature);
@@ -194,7 +228,18 @@ void mainScreen() {
     tft.println("KI");
    }
   }
+  
   displayUptime(); 
+  
+  if (redrawTemp) {
+  tft.fillRect(60,20,98,18,BLUE);
+  tft.setCursor(0, 20); 
+  tft.setTextColor(GREEN);
+  tft.print("TEMP: ");
+  tft.setTextColor(YELLOW);
+  tft.print(tempC);tft.println(" C");
+  redrawTemp = false;
+ }
 }
 
 bool saveProfil1() {
@@ -387,8 +432,9 @@ void setup() {
   Serial.begin(9600);
   pinMode(motorPin, OUTPUT);
   pinMode(ledPin, OUTPUT);
-  pinMode(inputPin, INPUT);
+  pinMode(inputPin, INPUT_PULLUP);
   SPI.begin();
+  sensors.begin();
   tft.initR(INITR_BLACKTAB);
   tft.setRotation(1);
   tft.setTextWrap(false);
@@ -447,6 +493,14 @@ void loop() {
 //---------------MENU TIMER-----------------------
 unsigned long currMenuMillis = millis();
 if (currMenuMillis - prevMenuMillis >= 1000) {
+    chartTimer++;
+  if (chartTimer >= chartInterval) {
+    chartTimer =0;
+      for(int idx=0;idx<11;idx++) {
+       tempChart[idx] = tempChart[idx+1];
+       }
+       tempChart[11] = newVal; 
+  }
   if (runMenu) {
     secCounter++;
   }
@@ -461,7 +515,10 @@ if (secCounter >= menuTimeout) {
 sensors.setWaitForConversion(false);                                         // makes it async
 sensors.requestTemperatures();  
   if (sensors.getTempCByIndex(0) > -100) {
-    lasttempC = tempC;
     tempC = sensors.getTempCByIndex(0);
-    }
+    if (lasttempC != tempC) {
+    lasttempC = tempC;
+    redrawTemp = true;
+     }
+   }
 }
