@@ -507,9 +507,13 @@ if (currMenuMillis - prevMenuMillis >= 1000) {
   prevMenuMillis = currMenuMillis;
 }
 if (secCounter >= menuTimeout) {
+  tft.fillScreen(BLACK); 
   runMenu = false;
   secCounter = 0;
-  tft.fillScreen(BLACK); 
+  updMain=true;
+  updTime=true;
+  redrawTemp = true;
+  screenCleared = 0;
 }
 //--------------INFINITE LOOP---------------------
 sensors.setWaitForConversion(false);                                         // makes it async
